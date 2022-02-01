@@ -1,0 +1,44 @@
+---
+title: Pgweb monorepo setup
+id: pgweb-monorepo-setup
+---
+1. Setup a regular Pinglue monorepo along with additional pgweb packages (coming from the pgweb monorepo) as explained in [this guide](id:monorepo-setup). Then, following the same guide, add *pgweb* packages to your Pinglue monorepo by cloning the pgweb repository. To be more accurate, clone the pgweb repo inside the *packages* folder:
+
+*within folder `packages`*
+```shell
+git clone ... pgweb
+```
+
+<Recall>All folders within the folder *packages*, other than *pinglue*, *@pinglue* and *scripts*, are ignored by the root project git. So the cloned *pgweb* repo (and basically any other cloned folder within packages) will NOT be part of the monorepo in any way such as submodule, subtree, etc. Each cloned repo within the *packages* folder will have to be pushed independently into its respective repo. This allows for independent package development. </Recall>
+
+2. Bootstrap the monorepo (to include bootstrapping the newly added pgweb packages):
+
+*from project root*
+```
+npm run bt
+```
+
+3. Build typescript files in pgweb packages:
+
+*from project root*
+```
+npm run build-ts -- --scope=@pgweb/* 
+```
+
+You should see all success messages.
+
+4. Now you probably want to use pgweb packages in some project. You can create your project in any folder you want within the folder *packages*. For our tutorials we usually create a new folder with the format `@project-name` within folder *packages* where we place the main project folder (normally called *main*) along with all the custom packages. So for example, if our project is called *Pg market* the folder structure will be:
+
+```
+packages
+|___pinglue
+|___@pinglue
+|___scripts
+|___@pg-market
+|   |___main (main project folder)
+|   |___custom-package1
+|   |___custom-package2
+```
+
+<Note>The above structure is just a suggestion. You can follow any other folder structure you want. Any folder descending from folder *packages* can host a npm package, so you are free to come yo with your own structure. </Note>
+

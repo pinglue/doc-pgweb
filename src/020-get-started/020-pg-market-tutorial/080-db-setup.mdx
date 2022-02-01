@@ -1,0 +1,72 @@
+---
+title: Database setup
+---
+
+In section [](:mongodb-setup) we setup a Mongodb database called *pg-market-db* for our app. 
+
+The plugin *@pinglue/mongodb-pl* that we installed in section [](enter-pg) is the plugin that provides access to database for the backend hub. This is meant to be the only way to access database in pgweb framework.
+
+Any plugin that needs to read or store information has to use the channel *get-mongodb-collection* provided by *mongodb-pl* plugin to access the database. 
+
+Having installed *mongodb-pl*, now we need to give our Mongodb address and credentials to plugin *mongodb-pl* so that it can connect to it. This, as you may guess, is done through the *settings* of this plugin. 
+
+Looking at the settings schema of this plugin, we find:
+
+*packages/@pinglue*
+```yaml
+settings:
+
+  type: object
+
+  properties:
+  
+    dbName:
+      type: string
+      default: pinglueDB
+
+    host:
+      type: string
+      default: localhost
+
+    port:
+      type: number
+      default: 27017
+
+    username:
+      type: string
+
+    password:
+      type: string
+
+    queryString:
+      type: string
+
+      
+    driverOptions:
+      type: object
+      properties:
+        useUnifiedTopology: 
+          type: boolean
+          default: true
+```
+
+where it is clear what each settings field should mean. You can run the command `pg info` to see the current settings for the package *@pinglue/mongodb-pl*
+
+*main project folder*
+```
+npx pg info -k @pinglue/mongodb-pl
+```
+
+Assuming that your Mongodb is using the default setup in localhost, we just need to set the database name (field *dbName* above) to *pg-market-db*. 
+
+So in the main project folder create a new file at `data/@pinglue/mongodb-pl/settings.yaml`:
+
+```yaml
+dbName: pg-market-db
+```
+
+That's it! Confirm your Mongodb settings is correct by running the command `pg info` again.
+
+<Warn>If your Mongodb setting is different than what we assume here then set the right values in the *settings.yaml* file of *mongodb-pl* package</Warn>
+
+Commit: 99b95c5d58fc0a98a2a516c14069a8c3e3e4f344

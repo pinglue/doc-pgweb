@@ -1,0 +1,37 @@
+---
+title: Prerequisites
+---
+
+Concepts
+------------
+Having read the Pinglue "get started" section and familiarity with: 
+
+- the main concepts and architecture (hub, controller, channel)
+- how to clone and build this monorepo (not needed once the monorepo publishes)
+
+
+Setups
+-------------
+What you need to have installed before this tutorial:
+
+- NodeJS (v14.18.0 or higher)
+- Npm (v or higher)
+- have the Pinglue monorepo cloned and built For detail refer to [here](id:monorepo-setup)
+
+
+Third party tools
+-------------------
+
+pgweb uses Mongodb as its main database, so:
+
+- A local Mongodb server at its default port (i.e., 27017) 
+
+pgweb offers different choices for storing sessions info. The common one (and the one used in this tutorial) is to use a Redis server. So: 
+
+- A local Redis server at its default port (i.e, 6379)
+
+pgweb allows us to use any frontend framework (from raw HTML to high-end Angular) This tutorial uses GatsbyJS framework to build the frontend. So: 
+
+- gatsby CLI installed (just go: `npm install -g gatsby-cli`)
+
+

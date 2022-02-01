@@ -1,0 +1,476 @@
+---
+title: "Extending channels (using PINs)"
+
+---
+
+So far we used channels similar to global functions, where installing each package gave us one or more channels to run to get certain data or service done. 
+
+However recall from pinglue basis docs that a channel is more than just a global function; in fact it is a set of functions (so-called handlers) that all run together and if the channel has a non-void retuning value then this value will be calculated based on the set of returning values of its handlers (according to a certain function called the reducer of that channel). 
+
+Based on this architecture, when you install a new package, in addition to adding new channels, it may add handlers to existing channels and thus extend and enrich their function. 
+
+A good example could a security channel. Imagine a channel called *is-submission-spam* which accepts a submitted form data as its param and it is to decide whether this form submission is a spam or not by returning a number between 0 and 1 as the likelihood of it being a spam. So we can interpret any value above 0.5 to mean that it is a spam and any value below 0.5 to mean it is not a spam.
+
+Now we can install a bunch of security packages that glue handlers to this channel and each handler returns the likelihood number based on its own approach and algorithm, and at the end the channel returns the maximum of all these likelihoods (meaning it picks the most pessimist opinion among handlers). In this case, more packages you install more accurate result you will get from this channel, for while some handlers may not catch the spam, some others might and so the end result is that the channel will catch the spam better. 
+
+So in the above scenario installing a new security package will not introduce a new channel but enriches the existing *is-submission-spam* channel. For the rest of this tutorial we want to experience with this concept of extending channels. In the next section we will actually do something similar to the above scenario (to add spam guard for our contact us form). 
+
+But in this section we start by doing something a bit easier; instead of writing a new package to extend one of our existing channels, we do the same thing from within our React components. Recall that in the previous sections we converted our *list* React component into a PIN, meaning that this component contains a Pinglue controller, and we are going to use this indwelling controller to extend one of our channels to further extend and manipulate the way our app works.
+
+
+Some detail on *db-query* channel
+----------------------------------
+
+In previous sections we used channel *db-query* (from plugin *db-access-pl*) within our *list* PIN to make a query to the backend database. This channel does not do this operation in one go, but it calls a bunch of other intermediate channels. 
+
+One of these intermediate channels is *db-query-build* which is used to build the final query. The value passed to this channel is the initial query as passed to *db-query* channel. The reducer for this channel is the default object-merge reducer. That means the value object will be merged with whatever objects that channel handlers return.  
+
+So this channel can further modify the query through its handlers. To illustrate this workflow better, imagine you call the channel *db-query* with the following params to get a list of items cheaper than $20: 
+
+```javascript
+
+const res = await this.runA("db-query", {
+    collection: "products",
+    query: {
+        filters: {
+            price: {$lt: 20}
+        }
+    }
+});
+
+```
+
+Now *db-query* channel runs channel *db-query-build* to further modify the query. An equivalent code would be:
+
+```javascript
+
+const query = {
+    filters: {
+        price: {$lt: 20}
+    }
+}
+
+await this.runA("db-query-build", 
+
+    // ignore the param for now
+    {collection, group}, 
+
+    // focus on this; the initial query is passed as value to the channel
+    query
+);
+
+```
+
+Channel *db-query-build* uses the default object-merge reducer. That means any object that handlers return will be merged with the *query* object. 
+
+In previous sections we didn't have any controller gluing handler to channel *db-query-build*, and so as a result running channel *db-query-build* will have no effect on the object *query*, and it is sent to the backend exactly as it is.
+
+But now imagine we have two controllers A and B in our frontend hub (say belonging to two packages or PINs) where they glue handlers to channel *db-query-build* as follows:
+
+```javascript
+export default class extends Controller A {
+
+    async init() {
+
+        this.glue("db-query-build", params => ({
+            filter: {
+                rating: {$gt: 3}
+            }
+        }));
+    }
+```
+
+```javascript
+export default class extends Controller B {
+
+    async init() {
+
+        this.glue("db-query-build", params => ({
+            sort: {
+                price: 1
+            }            
+        }));
+    }
+```
+
+Then the final query object will be:
+
+```javascript
+{
+    filter: {
+        price: {$lt: 20}
+        rating: {$gt: 3}
+    },
+    sort: {
+        price: 1
+    }
+}
+```
+
+As clear from above, controller A added an additional filter, and controller B include sorting for the final results. Now lets exploit this channel to accomplish a real-world scenario:
+
+Adding filters/sorting to product search
+-----------------------------------------
+
+Of course no search can be without filter or sorting! Our list component so far only shows a list of product without any filter or sorting option. Lets add a select-box filter to show products with rating higher than a certain value.  
+
+Well one quick way to do that is to include the filter select-box inside our *ListProducts* component, and include its value as a filter when we run the channel *db-query*. A basic version would look like:
+
+*src/components/products-table.js*
+```jsx
+import React, {useEffect, useState} from "react";
+
+import {usePin} from "@pgweb/react-utils";
+
+export default function() {
+
+    const [products, setProducts] = useState([]);
+    const {runA, isReady, log} = usePin();
++   const [minRating, setMinRating] = useState(0);
+    
+
+    const onSearch = async () => {
+        if (!isReady) return;
+
+        // in-resident controller is ready
+
+        const res = await runA("db-query", {
+            collection: "products",
+            query: {
+                limit: 20
++               rating: {$gte: minRating}
+            }
+        });
+
+        if (res.type === "success")
+            setProducts(res.data.result);        
+    }
+
+    if (!isReady) return;
+
+    return (
+
+        <article>
+
++       <section>
++           <label> With rating at least: </label>
++           <select value={minRating} onChange={e=>setMinRating(e.target.value)}>
++               <option value={0}>N/A</option>
++               <option value={1}>1</option>
++               <option value={2}>2</option>
++               <option value={3}>3</option>
++               <option value={4}>4</option>
++               <option value={5}>5</option>
++           </select>
++       </section>
+
+        <section>
+            <button onClick={onSearch}>
+                Search
+            </button>
+        </section>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {products.map(p=>(
+                    <tr key={p._id}>
+                        <td>{p.title}</td>
+                        <td>{p.type}</td>
+                        <td>{p.description}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+        </>
+    );
+
+}
+```
+
+The above solution works ... so why not using it? Note that the above approach requires that the selectbox filter component be a sub-component of the *ListProducts* component. With a bit of more work (using paren-child prop passing) you can also follow the same approach if the filter component is a descendent of the *ListProducts* component. But this approach will not work if the *ListProducts* and the rating filter components are in two different DOM branches without any parent-child relationship.
+
+Note that this scenario is not very unlikely, often time you want to place your filter (or filters) in the header or in some model which are located in different DOM branches. 
+
+This is a general shortcoming of all component-based frontend frameworks (React, Vue, Angular, etc). Since in these frameworks the main cross-component communication is between paren and child (and can be extended to ancestor/descendants). But communication between two components in two unrelated parts of the DOM is not trivia. There are tools and tricks to achieve this goal in these frameworks: react-redux tool for React and DI services in Angular are all efforts for such more general cross-component communication. But overall the process is not natively supported.
+
+Now using *db-query-build* channels in Pinglue we can design a component (or better to say PIN) for our rating filter which works in any location in the DOM without restriction as described below:
+
+
+Creating a Pin for the rating filter 
+-------------------------------------
+
+### Step 1:
+
+Create a new component in pg-marked project at `src/components/rating-filter.js`, to render the filter selectbox:
+
+*src/components/rating-filter.js*
+```jsx
+import React, {useState} from "react";
+
+export default function() {
+
+    const [minRating, setMinRating] = useState(0);
+
+    return (
+        <article>
+            <label> With rating at least: </label>
+            <select value={minRating} onChange={e=>setMinRating(e.target.value)}>
+                <option key={0} value={0}>N/A</option>
+                <option key={1} value={1}>1</option>
+                <option key={2} value={2}>2</option>
+                <option key={3} value={3}>3</option>
+                <option key={4} value={4}>4</option>
+                <option key={5} value={5}>5</option>
+           </select>
+        </article>
+    )
+}
+```
+### Step 2:
+
+Modify *List* component to include the rating filter component:
+
+*src/pages/list.js*
+```jsx
+import "../pg/hub-factory";
+import * as React from "react";
+
+import ProductsTable from "../components/products-table";
++import RatingFilter from "../components/rating-filter";
+
+export default function() {
+
+    return (
+
+        <>
+        <h1> List of products</h1> 
+
++       <section>
+            <RatingFilter/>
++       </section>
+
++       <section>
++           <ProductsTable/>            
++       </section>
+
+        </>
+    );
+
+}
+```
+
+### Step 3:
+Convert the rating filter component to PIN by adding *usePin* hook:
+
+*src/components/rating-filter.js*
+```jsx
+import React, {useState} from "react";
+
++import {usePin} from "@pgweb/react-utils";
+
+export default function() {
+
+    const [minRating, setMinRating] = useState(0);
+
++   const {useGlue, isReady, log} = usePin();
+
++   if (!isReady) return;
+
+    return (
+        <article>
+            <label> With rating at least: </label>
+            <select value={minRating} onChange={e=>setMinRating(e.target.value)}>
+                <option key={0} value={0}>N/A</option>
+                <option key={1} value={1}>1</option>
+                <option key={2} value={2}>2</option>
+                <option key={3} value={3}>3</option>
+                <option key={4} value={4}>4</option>
+                <option key={5} value={5}>5</option>
+           </select>
+        </article>
+    )
+    
+}
+```
+
+Note that *usePin* gives us the (hook) function *useGlue* instead of just *glue*. This in contrast with other Pinglue controller methods like *runA*, *runS*, *log*, etc where the methods names are preserved. 
+
+This is because *glue* method requires callback, and within a function react component we need to do some extra work to preserve the callbacks and avoid memory leaks. 
+
+For this reason, *usePin* wraps the original method *glue* within the hook *useGlue* to make it 100% compatible with react system. But the usage remain the same as described in the next step:
+
+### Step 4:
+
+Use the hook *useGlue* to glue a handler to the channel *db-query-build* in order to add the rating filter to our db query:
+
+
+```jsx
+import React, {useState} from "react";
+
+import {usePin} from "@pgweb/react-utils";
+
+export default function() {
+
+    const [minRating, setMinRating] = useState(0);
+
+    const {useGlue, isReady, log} = usePin();
+
++   useGlue("db-query-build", (params, value)=> {
++       return {
++           filters: {
++               rating: {$gte: Number(minRating)}
++           }
++       }
++   });
+
+    if (!isReady) return;
+
+    return (
+        <article>
+            <label> With rating at least: </label>
+            <select value={minRating} onChange={e=>setMinRating(Number(e.target.value))}>
+                <option key={0} value={0}>N/A</option>
+                <option key={1} value={1}>1</option>
+                <option key={2} value={2}>2</option>
+                <option key={3} value={3}>3</option>
+                <option key={4} value={4}>4</option>
+                <option key={5} value={5}>5</option>
+           </select>
+        </article>
+    )
+    
+}
+```
+
+That's it!
+ 
+Now run the pgweb and GatsbyJS servers. Access the list page (at *http://localhost:4000/list*). You should be able to filter based on rating now!
+
+> *Note:* The components *RatingFilter* and *ProductsTable* are NOT in parent-child relation. In fact they can be placed anywhere in DOM, the app still works! This implies Pinglue hub in frontend can play a role similar to React Redux or DI in Angular, albeit in a much simpler way without having to deal with many class definitions cumbersome boilerplate. 
+
+
+Creating a PIN for Sorting 
+-------------------------------------
+
+In the same manner we can write another PIN to sort the products in ascending or descending order of their title. Add a new file:
+
+*components/list-sort.js*
+```jsx
+import React, {useState} from "react";
+
+import {usePin} from "@pgweb/react-utils";
+
+export default function() {
+
+    // 1 means ascending, -1 means descending
+    const [sortDirection, setSortDirection] = useState(1);
+
+    const {useGlue, isReady, log} = usePin();
+
+    useGlue("db-query-build", (params, value)=> {
+        return {
+            sort: {
+                title: sortDirection
+            }
+        }
+    });
+
+    if (!isReady) return;
+
+    return (
+        <article>
+            <label> Sort by titles: </label>
+            <select value={sortDirection} onChange={e=>setSortDirection(Number(e.target.value))}>
+                <option key={0} value={1}>Ascending</option>
+                <option key={1} value={-1}>Descending</option>
+           </select>
+        </article>
+    )
+    
+}
+```
+
+Then include the new PIN in the list page:
+
+```jsx
+import "../pg/hub-factory";
+import * as React from "react";
+
+import ProductsTable from "../components/products-table";
+import RatingFilter from "../components/rating-filter";
++import TitleSort from "../components/list-sort";
+
+export default function() {
+
+    return (
+
+        <>
+        <h1> List of products</h1> 
+
+        <section>
+            <RatingFilter/>
++           <TitleSort/>
+        </section>
+
+        <section>
+            <ProductsTable/>            
+        </section>
+
+        </>
+    );
+
+}
+```
+
+Channels info and diagraming
+------------------------------
+
+In this lesson we primarily used the channel *db-query-build* to implement our new features of filtering and sorting. 
+
+The take-away lesson is that knowing which channels are available in our hub, and the exact description of each channel, is very vital for developing in a Pinglue system. 
+
+There are various resources to find out info about channels in a Pinglue hub:
+
+1. The `register.yaml` files in each Pinglue package `channels` folder is the main source of truth for the channels that this package registers in each route. You can ready these file directly, but it is better to use visualizing tools described below that use these files to generate a good looking report of channels 
+2. CLI command `npx pg channels-man <route>` creates a user-friendly list of channels info based on `registers.yaml` files in installed packages
+3. CLI command `npx pg channels <route>` actually bootstraps a hub for the given route and probes which channels are available there. Note that this list should be (ideally) identical to the list `npx pg channels-man <route>` - but this may not be the case. In addition to various bugs, one reason could be that a channel may not be registered by any package, in which case you will see warning for this channel when running this command. 
+4. Additional `stories.md` files in packages `channels` folder describe how channels are related together, and how one channel may call others in a row (similar to what we saw for `db-query`)
+
+In the feature we will write IDE extensions that provide all these channels info in the most friendly way right into your IDE!
+
+Either way, channels are the backbone of developing in a Pinglue system. Make sure you know all the channels in your hub before creating new ones. Remember: "there might be a channel for that"
+
+Channel workflow
+----------------------
+
+It is a good place here to mention that channel *db-query-build* is not the only channel that runs by channel *db-query*. In fact, upon running channel *db-query* a series of channels are run. The following table shows these channels in order of running and a brief info about each:
+
+|Channel      | Description       | Good for      |
+|-------------|------------------|---------------|
+|db-query-build| Modifies the query field of the *params*| adding filters/sorting/pagination plugins|
+|db-query-before-send|If a handler returns data, that data will be returned and no backend call will happen|caching/pagination plugins|
+|db-response-process|Modifies the query response that comes from the backend | Changing the query result as a whole (e.g., changing order, filtering, etc), adding extra info to teh response (e.g., the time that the query took to respond) |
+|db-result-item-process|If the query result is an array of items, this channel will be run for each item| Further modify each item individually
+|db-response| published the query response | Any plugin/PIN that wants to use the data|
+
+
+This is actually a common pattern for many channels. It is always a good idea to break a task that your channel is supposed to do into smaller subtasks and call a channel for each subtask. 
+
+This way, each subtask could be customized through its associate subtask, and this can help your overall operation become customized in various ways and aspects. 
+
+Imagine if channel `db-query` did not call any of the above mentioned channels and send the query directly to the backend and returned the result; then there was no way for us to add filter or do other customizations.
+
+Looking at the table above you can see that the series of channels run by channel *db-query* gives us lot of opportunity to modify and customize the query flow and allow us to implemented various schemes and complex workflows. In this lesson we used this flow to add filtering and sorting. In the next section we use some other channels in this flow to add more features to our pg-market site.
+
+As mentioned before in Pinglue docs, it is always a good practice to break your channel run into sub-channel runs and provide more points of customization through these sub channels.
+
+Commit: c3baed56b2f50821eaf711083df409528503525c
+
+

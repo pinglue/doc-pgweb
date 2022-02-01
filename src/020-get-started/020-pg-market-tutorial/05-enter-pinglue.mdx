@@ -1,0 +1,65 @@
+---
+title: Enter Pinglue
+id: enter-pg
+---
+
+Now it is time to add Pinglue to our project. We use pgweb framework, which is a set of packages to create both the frontend and backend for a web app. (pgweb creates two hubs, one for frontend and one for backend.) 
+
+To do so, we need to install a bunch of packages on our project as follows: 
+
+> **Note:** In what follows we use lerna add command (wrapped in the script `addto`) since we are still using the monorepo directly. After packages are released all these `npm run addto` will be replaced with the normal `npm install` statements.
+
+> **Note:** We add all the packages below manually and it seem daunting. Our purpose is just to present the basis to the reader. For real production there are scripts that can automate this process. 
+
+*from the monorepo root:*
+```bash
+# pinglue core
+npm run addto pinglue @pg-market/main
+
+# pg cli - for running hubs and various checks from the shell (could be a dev dependency)
+npm run addto @pinglue/cli @pg-market/main -- --dev
+
+# essential helper tools for pgweb framework
+npm run addto @pgweb/utils @pg-market/main
+
+# the default tool for logging and printing messages  
+npm run addto @pinglue/print @pg-market/main
+
+# plugin to operate the MongoDB
+npm run addto @pinglue/mongodb-pl @pg-market/main
+
+# plugin to facilitate backend/frontend communication
+npm run addto @pgweb/request-pl @pg-market/main
+
+# main plugin (runner) for the /server route which frame the server for both dev and prod
+npm run addto @pgweb/server-pl @pg-market/main
+
+# this package exports react hooks to access the frontend hub from React components (i.e., converting a React component to a PIN) 
+npm run addto @pgweb/react-utils @pg-market/main
+
+# this plugin shows up in the /server route and generates the code for the React component "Pin", which is a shortcut way to create PIN in react.
+npm run addto @pgweb/react-server-pl @pg-market/main
+
+```
+
+<Note>Other than the last two packages above, all the rest are essential for a pgweb app no matter what frontend framework/tool you are using. The last two packages are needed only if you use React in your frontend tool (e.g., GatsbyJS, NextJS, create-react-app, etc.) If you use framework other than React, like Angular or raw HTML, then the last two packages have to be replaced by other packages specialized for those frameworks.</Note>
+
+Then bootstrap the monorepo (always do so after adding or creating new packages):
+
+*from monorepo root:*
+```bash
+npm run bt
+```
+
+To check that things are installed, try the pg cli (installed by @pinglue/cli package):
+
+*from pg-market project root*
+```bash
+npx pg
+```
+
+You should see the pg cli help page explaining different options. Have a nice life!
+
+> **Note:** Once released, you'll be able to install `@pinglue/cli` globally, and then instead of `npx pg` you can just go like `pg`.
+
+<Info>You can see the code for this step at [this commit](https://github.com/pinglue/samples-pgweb/commit/88f849017a42a9cd8f2f78bcb601bc62bc66e565)</Info>

@@ -1,0 +1,134 @@
+---
+title: Developing a plugin for product promotions (frontend part)
+---
+
+In the previous section we created a minimal Pinglue package which adds an empty controller to the frontend hub. Now in this section we add some code to this controller to achieve our goal; i.e., showing the promoted items on the top of the search result.
+
+Extending channel db-response-process
+---------------------------------------
+
+As we discussed in the previous section, the key to modify the search result is to extend the channel *db-response-process* . 
+
+For the details of this channel, and what formats its params and value have please refer to the `channels/frontend/registers.yaml` file at the *db-access-pl* package root folder, or alternatively run:
+
+*from pg-market main folder*
+```
+npx pg channels-man frontend -c db-response-process
+```
+
+<Warn>
+    The outcome of the above command depends on how this channel is documented in the package channels folder, and it might be rather empty. 
+</Warn>
+
+<Tip>
+    If you find the outcome of `npx pg channels-man` unhelpful create a PR for the respective package to add more info for the channel. meanwhile, you can refer to the source code as the ultimate source of truth for the channel's details.
+</Tip>
+
+<Info>
+    In the future we will have some UI tools to show these info for channels.
+</Info>
+
+
+Just to make this tutorial more self-contain, here is a brief description of channel *db-response-process*: 
+
+* The params format is object with fields `collection, group, query, paginationInfo`
+
+* The value is the query response: an object with fields `totalCount, result`. The result field is the array of products.
+
+Frontend controller code
+--------------------------
+
+Now if you followed the tutorials on Pinglue, you should be able to easily guess what to write for the frontend controller code. (The copy/pasted template also has hints regarding as how to glue a handler to a channel or how to run a channel, etc.)
+
+Here is the complete code:
+
+*./src/frontend/index.ts*
+```typescript
+import {Controller} from "pinglue/browser";
+
+export default class extends Controller {
+
+    async init() {      
+
+        // Glue some handler:
+        this.glue(
+            "db-response-process", 
+            this.dbResponseHandler.bind(this)
+        );
+
+    }
+    
+    async dbResponseHandler(params, value) {
+        
+        // if the query is not for product collection then do nothing
+        if (params.collection !== "products") 
+            return;
+
+        // if the query result does not have the right format just quit
+        if (!Array.isArray(value.result))
+            return;
+
+        // else, modify the result:
+
+        const promotionInfo = await this.getPromotions();
+
+        // an array of promoted 
+        const promotedProductsTitles = promotionInfo
+            .map(item => item.title);
+
+        const promotedItems = [];
+        const regularItems = [];
+
+        for (const item of value.result) {
+            if (promotedProductsTitles.includes(item.title))
+                promotedItems.push(item)
+            else
+                regularItems.push(item);
+        }
+
+        // the return object will be merged with the original value (=query response)
+
+        return {
+            result: [...promotedItems, ...regularItems]
+        };
+
+    }
+
+    /**
+     * 
+     * @returns a list of promotions (from the backend db)
+     */
+    private async getPromotions() {
+        
+        // TODO: this will have to the the list of the deals from the backend. For now we hardcode it:
+
+        const promotionInfo = [
+
+            {
+                title: "Brown eggs",
+                percentageOff: 60
+            },            
+            {
+                title: "Caprese salad",
+                percentageOff: 45
+            },
+
+        ];
+
+        return promotionInfo;
+    }
+   
+}
+```
+
+That's it!
+
+<Warn>
+    Since we are using typescript, remember to compile your code after changing it (`npx tsc -b`), or alternatively run the typescript compile in watch mode (`npx tsc -w`) - otherwise you don't see any changes!!
+</Warn>
+
+Now run the pgweb server and Gatsby server in the pg-market main project and run the search. You should see the promoted items on top of the list.
+
+Note that in the code above we are using a hardcoded data regarding promotions. This data is supposed to come from the backend, but at this moment our plugin is a frontend-only plugin and has no connection to the backend. 
+
+In the next section we add a backend controller which fetches promotion data from the database and sends it to the frontend, and thus we will have a full-stack plugin.
